@@ -16,7 +16,10 @@ const plural = (n, one, few, many) => {
   return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
 };
 const positions = n => `${n} ${plural(n, 'позиция', 'позиции', 'позиций')}`;
-const parseNum = s => (s.trim() === '' ? NaN : Number(s.trim().replace(',', '.')));
+// только цифры с запятой или точкой: Number() принял бы и «1e3», и «0x10»
+const parseNum = s => (/^-?\d+(?:[.,]\d+)?$/.test(s.trim()) ? Number(s.trim().replace(',', '.')) : NaN);
+const MAX_QTY = 99999; // допущение: больше в одной строке КП не бывает, а длинное число ломает таблицу
+const qtyOk = q => Number.isInteger(q) && q >= 1 && q <= MAX_QTY;
 const showNum = n => (Number.isFinite(n) ? String(n).replace('.', ',') : '');
 const VALID_DAYS = 14; // срок действия КП, допущение
 const baseName = name => name.replace(/\s+\S+$/, '');
@@ -57,7 +60,7 @@ function lineIssues(l) {
   if (l.status === 'archived') out.push({ kind: 'err', text: 'Снят с продажи', action: 'replace' });
   if (l.price == null && l.status !== 'missing') out.push({ kind: 'err', text: 'Нет цены в PIM: уточните цену у руководителя или замените товар', action: 'replace' });
   if (l.pending) out.push({ kind: 'price', text: `Цена в PIM обновилась: было ${money(l.price)}, стало ${money(l.pending.price)}`, action: 'accept' });
-  if (!Number.isInteger(l.qty) || l.qty < 1) out.push({ kind: 'err', text: 'Количество: целое число от 1', field: 'qty' });
+  if (!qtyOk(l.qty)) out.push({ kind: 'err', text: 'Количество: целое число от 1 до 99 999', field: 'qty' });
   if (!Number.isFinite(l.discount) || l.discount < 0 || l.discount > 99) out.push({ kind: 'err', text: 'Скидка: от 0 до 99%', field: 'disc' });
   else if (l.discount > MANAGER.maxDiscount) out.push({ kind: 'warn', text: `Скидка выше лимита ${MANAGER.maxDiscount}%, нужно согласование`, field: 'disc', discount: true });
   if (l.price != null && !l.pending && daysSince(l.priceUpdatedAt) > PRICE_MAX_AGE_DAYS) out.push({ kind: 'warn', text: `Цена не обновлялась ${daysSince(l.priceUpdatedAt)} дн., проверьте актуальность` });
@@ -91,11 +94,11 @@ function renderLines() {
       <td class="name">
         <div>${esc(l.name)}</div>
         <div class="sku mono">${esc(l.sku)}</div>
-        <div class="row-issues" data-issues="${i}"></div>
+        <div class="row-issues" id="iss-${i}" data-issues="${i}"></div>
       </td>
-      <td class="num"><input class="n" type="text" inputmode="numeric" autocomplete="off" value="${esc(showNum(l.qty))}" data-qty="${i}" aria-label="Количество, ${esc(l.sku)}"></td>
+      <td class="num"><input class="n" type="text" inputmode="numeric" autocomplete="off" value="${esc(showNum(l.qty))}" data-qty="${i}" aria-describedby="iss-${i}" aria-label="Количество, ${esc(l.sku)}"></td>
       <td class="num mono">${price(l.price)}</td>
-      <td class="num"><input class="n" type="text" inputmode="decimal" autocomplete="off" value="${esc(showNum(l.discount))}" data-disc="${i}" aria-label="Скидка в процентах, ${esc(l.sku)}"></td>
+      <td class="num"><input class="n" type="text" inputmode="decimal" autocomplete="off" value="${esc(showNum(l.discount))}" data-disc="${i}" aria-describedby="iss-${i}" aria-label="Скидка в процентах, ${esc(l.sku)}"></td>
       <td class="num mono strong" data-sum="${i}"></td>
       <td><button class="btn icon ghost" data-del="${i}" aria-label="Убрать ${esc(l.sku)} из КП">×</button></td>
     </tr>`).join('');
@@ -111,6 +114,11 @@ function renderSummary() {
     if (!row) return;
     const iss = lineIssues(l), err = iss.some(x => x.kind === 'err');
     row.className = err ? 'bad' : iss.some(x => x.kind === 'price') ? 'pending' : iss.length ? 'warn' : '';
+    for (const [field, attr] of [['qty', 'data-qty'], ['disc', 'data-disc']]) {
+      const x = iss.find(y => y.field === field), input = row.querySelector(`[${attr}="${i}"]`);
+      input.setAttribute('aria-invalid', x?.kind === 'err' ? 'true' : 'false');
+      input.classList.toggle('warn', x?.kind === 'warn');
+    }
     row.querySelector(`[data-sum="${i}"]`).textContent = counted(l) ? money(lineSum(l)) : '—';
     row.querySelector(`[data-issues="${i}"]`).innerHTML = iss.map(x => `
       <p class="issue ${x.kind}"><span class="tag">${x.kind === 'err' ? 'Ошибка' : x.kind === 'price' ? 'Новая цена' : 'Проверить'}</span>${esc(x.text)}
@@ -452,7 +460,7 @@ function parseBulk(text) {
     const nums = tail.match(/-?\d+(?:[.,]\d+)?/g) || [];
     const leftover = tail.replace(/-?\d+(?:[.,]\d+)?/g, '').trim();
     const qty = !tail ? 1 : nums.length === 1 && !leftover ? Number(nums[0].replace(',', '.')) : NaN;
-    return { raw, sku: sku.toUpperCase(), qty, qtyOk: Number.isInteger(qty) && qty >= 1 };
+    return { raw, sku: sku.toUpperCase(), qty, qtyOk: qtyOk(qty) };
   });
 }
 const bulkLabel = r => r.status === 'missing' ? '<span class="pill err">нет в PIM</span>'
@@ -515,8 +523,8 @@ function docHtml(v, draft) {
     <div class="doc-top"><div class="doc-logo screen-only">Логотип и реквизиты<br>из шаблона компании</div>
       <div class="doc-meta"><h1>Коммерческое предложение</h1><p>${draft ? 'Черновик' : `№ ${esc(v.no)}`} от ${date(v.at)}<br>Действительно до ${date(validTill)}</p></div></div>
     <p class="doc-to"><span>Для</span>${esc(d.company)}, ${esc(d.contact)}</p>
-    <table class="doc-table"><thead><tr><th>№</th><th>Артикул</th><th>Наименование</th><th class="num">Кол-во</th><th class="num">Цена, ₽</th><th class="num">Скидка</th><th class="num">Сумма, ₽</th></tr></thead>
-    <tbody>${v.lines.map((l, i) => `<tr><td>${i + 1}</td><td class="mono">${esc(l.sku)}</td><td>${esc(l.name)}</td><td class="num">${esc(l.qty)}</td><td class="num mono">${money(l.price)}</td><td class="num">${l.discount ? esc(num(l.discount)) + '%' : ''}</td><td class="num mono">${money(l.sum)}</td></tr>`).join('')}</tbody></table>
+    <div class="doc-scroll"><table class="doc-table"><thead><tr><th>№</th><th>Артикул</th><th>Наименование</th><th class="num">Кол-во</th><th class="num">Цена, ₽</th><th class="num">Скидка</th><th class="num">Сумма, ₽</th></tr></thead>
+    <tbody>${v.lines.map((l, i) => `<tr><td>${i + 1}</td><td class="mono">${esc(l.sku)}</td><td>${esc(l.name)}</td><td class="num">${esc(l.qty)}</td><td class="num mono">${money(l.price)}</td><td class="num">${l.discount ? esc(num(l.discount)) + '%' : ''}</td><td class="num mono">${money(l.sum)}</td></tr>`).join('')}</tbody></table></div>
     <dl class="doc-totals">
       ${gross !== net ? `<dt>Без скидки</dt><dd class="mono">${money(gross)} ₽</dd><dt>Скидка</dt><dd class="mono">−${money(round2(gross - net))} ₽</dd>` : ''}
       <dt class="grand">Итого</dt><dd class="mono grand">${money(net)} ₽</dd>

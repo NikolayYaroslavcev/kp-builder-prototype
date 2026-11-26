@@ -35,6 +35,10 @@ input, select, textarea, button { font: inherit; color: inherit; }
 input, select, textarea { background: var(--raised); border: 1px solid var(--line); border-radius: var(--r); padding: 7px 10px; min-height: 36px; }
 textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 13px; }
 :is(input, select, textarea, button, summary):focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--focus); }
+/* поле с ошибкой красное и в фокусе, с замечанием — жёлтая рамка */
+input[aria-invalid="true"] { border-color: var(--err); background: var(--err-bg); }
+input[aria-invalid="true"]:focus-visible { border-color: var(--err); box-shadow: 0 0 0 3px color-mix(in srgb, var(--err) 30%, transparent); }
+input.warn, input.warn:focus-visible { border-color: var(--warn); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--r);
   background: var(--raised); color: var(--ink); cursor: pointer; font-weight: 500; white-space: nowrap; transition: background-color .12s, border-color .12s, transform .06s; }
 .btn:hover:not(:disabled) { border-color: var(--ink-2); }
@@ -169,6 +173,9 @@ tr.flash > td { animation: flash 1.2s ease-out; }
 
 dialog { border: 1px solid var(--line); border-radius: var(--r); padding: 0; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
 dialog::backdrop { background: rgb(14 17 20 / .5); }
+/* страница под открытым окном не листается */
+html:has(dialog[open]) { overflow: hidden; }
+dialog { overscroll-behavior: contain; }
 .drawer { margin: 0 0 0 auto; height: 100dvh; max-height: 100dvh; width: min(640px, 100vw); max-width: 100vw; border-radius: 0; border-width: 0 0 0 1px; display: none; flex-direction: column; }
 .drawer[open] { display: flex; }
 .drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
@@ -199,6 +206,12 @@ dialog::backdrop { background: rgb(14 17 20 / .5); }
 .doc-meta h1 { font-size: 20px; }
 .doc-meta p { margin: 4px 0 0; color: var(--ink-2); }
 .doc-to { margin: 18px 0; } .doc-to span { color: var(--muted); margin-right: 10px; }
+/* тень у края, пока таблицу можно листать вбок (на телефоне) */
+.doc-scroll { overflow-x: auto; background:
+  linear-gradient(to right, #fff 30%, #fff0) left / 40px 100% no-repeat local,
+  linear-gradient(to left, #fff 30%, #fff0) right / 40px 100% no-repeat local,
+  radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / .2), transparent) left / 14px 100% no-repeat scroll,
+  radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / .2), transparent) right / 14px 100% no-repeat scroll; }
 .doc-table { width: 100%; border-collapse: collapse; }
 .doc-table th { font-size: 12px; font-weight: 600; text-align: left; padding: 7px 6px; border-bottom: 1.5px solid var(--ink); }
 .doc-table td.mono { white-space: nowrap; }
@@ -256,7 +269,8 @@ dialog::backdrop { background: rgb(14 17 20 / .5); }
   tr.bad > td:first-child, tr.warn > td:first-child, tr.pending > td:first-child { box-shadow: none; }
   tr.bad { box-shadow: inset 3px 0 0 var(--err); } tr.warn { box-shadow: inset 3px 0 0 var(--warn); } tr.pending { box-shadow: inset 3px 0 0 var(--accent); }
   .lines tr { padding-left: 8px; }
-  .paper { padding: 28px 18px 20px; }
+  .paper { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border: 0; border-radius: 0; padding: 28px 16px 20px; overflow-x: hidden; }
+  .doc-totals { min-width: 0; }
   .doc-top { flex-direction: column-reverse; }
   .doc-meta { text-align: left; }
 }
@@ -271,6 +285,7 @@ dialog::backdrop { background: rgb(14 17 20 / .5); }
   #printArea { display: block; width: auto; padding: 0; color: #16191c; }
   #printArea .screen-only { display: none; }
   #printArea .doc-top { justify-content: flex-end; }
+  .doc-scroll { overflow: visible; background: none; }
   .doc-table tr { break-inside: avoid; }
   .doc-totals, .doc-terms, .doc-sign { break-inside: avoid; }
 }
