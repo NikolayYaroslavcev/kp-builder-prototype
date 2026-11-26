@@ -1,10 +1,10 @@
 """Проверка прототипа в браузере (Playwright).
-Запуск: python -m http.server 8765 в папке прототипа, затем python tests/smoke.py
+Запуск: python -m http.server 8780 в папке прототипа, затем python tests/smoke.py
 Другой адрес: URL=https://... python tests/smoke.py"""
 import os, sys, tempfile
 from playwright.sync_api import sync_playwright
 
-URL = os.environ.get('URL', 'http://localhost:8765/')
+URL = os.environ.get('URL', 'http://localhost:8780/')
 fails = []
 
 
