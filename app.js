@@ -1,14 +1,14 @@
 import { PRODUCTS, CATEGORY_NAMES, DEALS, MANAGER, PRICE_MAX_AGE_DAYS, VAT_RATE } from './data.js';
 
 const $ = id => document.getElementById(id);
-const money = n => n == null ? '—' : n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = n => n == null ? 'нет цены' : n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const round2 = n => Math.round(n * 100) / 100;
 const vatOf = gross => round2(gross * VAT_RATE / (100 + VAT_RATE)); // цены с НДС (допущение)
 const bySku = new Map(PRODUCTS.map(p => [p.sku, p]));
 const PAGE = 15;
 
-// «API» каталога: поиск, фильтр и страницы — как будет на стороне сервера/PIM, а не выгрузкой всего каталога в браузер.
+// «API» каталога: поиск, фильтр и страницы: так будет на стороне сервера/PIM, а не выгрузкой всего каталога в браузер.
 function searchCatalog({ q, cat, page }) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const found = PRODUCTS.filter(p =>
@@ -62,12 +62,12 @@ function checks() {
   for (const l of state.lines) {
     const p = bySku.get(l.sku);
     const days = Math.floor((Date.now() - new Date(p.priceUpdatedAt)) / 864e5);
-    if (p.price == null) out.push(['err', `${p.sku}: нет цены в PIM — уточнить цену до отправки`, l.sku]);
-    if (p.status === 'archived') out.push(['err', `${p.sku}: товар снят с продажи — заменить`, l.sku]);
+    if (p.price == null) out.push(['err', `${p.sku}: нет цены в PIM, уточните цену до отправки`, l.sku]);
+    if (p.status === 'archived') out.push(['err', `${p.sku}: товар снят с продажи, нужна замена`, l.sku]);
     if (!Number.isInteger(l.qty) || l.qty < 1) out.push(['err', `${p.sku}: количество должно быть целым числом от 1`, l.sku]);
-    if (!Number.isFinite(l.discount) || l.discount < 0 || l.discount > 99) out.push(['err', `${p.sku}: скидка вне диапазона 0–99%`, l.sku]);
-    else if (l.discount > MANAGER.maxDiscount) out.push(['warn', `${p.sku}: скидка ${l.discount}% выше лимита ${MANAGER.maxDiscount}% — нужно согласование`, l.sku]);
-    if (p.price != null && days > PRICE_MAX_AGE_DAYS) out.push(['warn', `${p.sku}: цена не обновлялась ${days} дн. — проверить актуальность`, l.sku]);
+    if (!Number.isFinite(l.discount) || l.discount < 0 || l.discount > 99) out.push(['err', `${p.sku}: скидка должна быть от 0 до 99%`, l.sku]);
+    else if (l.discount > MANAGER.maxDiscount) out.push(['warn', `${p.sku}: скидка ${l.discount}% выше лимита ${MANAGER.maxDiscount}%, нужно согласование`, l.sku]);
+    if (p.price != null && days > PRICE_MAX_AGE_DAYS) out.push(['warn', `${p.sku}: цена не обновлялась ${days} дн., проверьте актуальность`, l.sku]);
   }
   return out;
 }
@@ -78,29 +78,29 @@ function renderCatalog() {
   $('catalog').innerHTML = items.map(p => `
     <tr class="${p.status === 'archived' || p.price == null ? 'bad' : ''}">
       <td class="sku">${esc(p.sku)}</td>
-      <td>${esc(p.name)}${p.status === 'archived' ? ' <span class="muted">(снят)</span>' : ''}</td>
+      <td>${esc(p.name)}${p.status === 'archived' ? '<span class="flag err">снят с продажи</span>' : ''}</td>
       <td class="num">${money(p.price)}</td>
-      <td><button data-add="${esc(p.sku)}" title="Добавить в КП">+</button></td>
-    </tr>`).join('') || '<tr><td colspan="4" class="muted">Ничего не найдено</td></tr>';
+      <td><button class="icon" data-add="${esc(p.sku)}" aria-label="Добавить ${esc(p.sku)} в КП">+</button></td>
+    </tr>`).join('') || '<tr><td colspan="4" class="empty">Ничего не найдено. Проверьте артикул или сбросьте категорию.</td></tr>';
   $('pageInfo').textContent = `${state.page + 1} / ${pages} · найдено ${total}`;
   $('prev').disabled = state.page === 0;
   $('next').disabled = state.page >= pages - 1;
 }
 
-// Полная перерисовка строк — только при добавлении/удалении. При вводе количества и скидки
+// Полная перерисовка строк нужна только при добавлении/удалении. При вводе количества и скидки
 // обновляются суммы и проверки, а поля ввода не пересоздаются (не теряется фокус).
 function renderLines() {
   $('lines').innerHTML = state.lines.map((l, i) => {
     const p = bySku.get(l.sku);
     return `<tr data-row="${i}">
       <td><div>${esc(p.name)}</div><div class="sku">${esc(p.sku)}</div></td>
-      <td class="num"><input class="n" type="number" min="1" step="1" value="${esc(l.qty)}" data-qty="${i}"></td>
+      <td class="num"><input class="n" type="number" min="1" step="1" value="${esc(l.qty)}" data-qty="${i}" aria-label="Количество, ${esc(p.sku)}"></td>
       <td class="num">${money(p.price)}</td>
-      <td class="num"><input class="n" type="number" min="0" max="99" step="0.5" value="${esc(l.discount)}" data-disc="${i}"></td>
+      <td class="num"><input class="n" type="number" min="0" max="99" step="0.5" value="${esc(l.discount)}" data-disc="${i}" aria-label="Скидка в процентах, ${esc(p.sku)}"></td>
       <td class="num" data-sum="${i}"></td>
-      <td><button data-del="${i}" title="Убрать">×</button></td>
+      <td><button class="icon" data-del="${i}" aria-label="Убрать ${esc(p.sku)}">×</button></td>
     </tr>`;
-  }).join('') || '<tr><td colspan="6" class="muted">Добавьте товары из каталога или списком артикулов</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="empty">Пока пусто. Добавьте товары кнопкой «+» в каталоге или вставьте список артикулов.</td></tr>';
   renderSummary();
 }
 
@@ -119,14 +119,18 @@ function renderSummary() {
   $('kpNo').textContent = `КП-${state.dealId}-${state.version}`;
   const gross = round2(state.lines.reduce((s, l) => s + (bySku.get(l.sku).price ?? 0) * (Number.isFinite(l.qty) ? l.qty : 0), 0));
   const net = round2(state.lines.reduce((s, l) => s + lineSum(l), 0));
-  $('totals').innerHTML = `Без скидки: ${money(gross)} ₽ · Скидка: ${money(round2(gross - net))} ₽<br>Итого: <b>${money(net)} ₽</b> <span class="muted">(в т. ч. НДС ${VAT_RATE}%: ${money(vatOf(net))} ₽)</span>`;
+  $('totals').innerHTML = `<span class="label">Без скидки</span><span class="num">${money(gross)} ₽</span>
+    <span class="label">Скидка</span><span class="num">${money(round2(gross - net))} ₽</span>
+    <span class="label">Итого</span><span class="num sum">${money(net)} ₽</span>
+    <span class="label">в т. ч. НДС ${VAT_RATE}%</span><span class="num">${money(vatOf(net))} ₽</span>`;
 
   $('checks').innerHTML = list.length
-    ? list.map(([t, msg]) => `<li class="${t}">${esc(msg)}</li>`).join('')
+    ? list.map(([t, msg]) => `<li class="${t}"><span class="kind">${t === 'err' ? 'Ошибка' : 'Проверить'}</span><span>${esc(msg)}</span></li>`).join('')
     : '<li class="ok">Ошибок нет, КП можно формировать</li>';
   const hasErr = list.some(c => c[0] === 'err');
   $('preview').disabled = hasErr;
   $('attach').disabled = hasErr;
+  $('blocked').textContent = hasErr ? 'Исправьте ошибки, чтобы сформировать КП' : '';
   store.save();
 }
 
@@ -171,7 +175,7 @@ $('bulkAdd').onclick = () => {
     if (!sku) continue;
     const qty = q == null ? 1 : Number(q.replace(',', '.'));
     if (!Number.isFinite(qty)) { badQty.push(raw.trim()); continue; }
-    // неверное количество (0,5, -3) добавляем как есть — его подсветят проверки
+    // неверное количество (0,5, -3) добавляем как есть, его подсветят проверки
     if (addItem(sku.toUpperCase(), qty)) added++; else missing.push(sku);
   }
   $('bulkResult').textContent = `Добавлено: ${added}`
@@ -184,7 +188,7 @@ $('print').onclick = () => window.print();
 $('closeDoc').onclick = () => $('doc').close();
 $('clear').onclick = () => { if (state.lines.length && confirm('Удалить все позиции из КП?')) { state.lines = []; renderLines(); } };
 $('attach').onclick = () => {
-  // Демо: что ушло бы в Битрикс24. Метод и поля — допущение, уточнить на реальном портале.
+  // Демо: что ушло бы в Битрикс24. Метод и поля: допущение, уточнить на реальном портале.
   const payload = {
     method: 'crm.deal.productrows.set',
     id: state.dealId,

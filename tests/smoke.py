@@ -43,7 +43,7 @@ with sync_playwright() as p:
     d0.fill('15')
     check('скидка 15% — предупреждение, КП доступно', 'выше лимита' in pg.inner_text('#checks') and not pg.is_disabled('#preview'))
     d0.fill('99.5')
-    check('скидка 99,5% — ошибка', 'вне диапазона' in pg.inner_text('#checks') and pg.is_disabled('#preview'))
+    check('скидка 99,5% — ошибка', 'от 0 до 99' in pg.inner_text('#checks') and pg.is_disabled('#preview'))
     q0.fill('0.5')
     check('количество 0,5 — ошибка', 'целым числом' in pg.inner_text('#checks'))
 

@@ -3,60 +3,66 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Сборка КП — прототип</title>
+<title>Сборка КП (прототип)</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="top">
-  <div class="brand">Сборка КП <span class="tag">прототип, данные условные</span></div>
-  <label class="deal">Сделка Битрикс24
+  <div class="brand">Сборка КП<span class="tag">прототип, товары и цены условные</span></div>
+  <label class="field">Сделка в Битрикс24
     <select id="deal"></select>
   </label>
-  <div id="dealInfo" class="muted"></div>
+  <div id="dealInfo" class="deal-info muted"></div>
 </header>
 
 <main class="grid">
-  <section class="panel">
-    <h2>Каталог PIM</h2>
+  <section class="panel" aria-labelledby="h-catalog">
+    <h2 id="h-catalog">Каталог PIM</h2>
     <div class="row">
-      <input id="q" type="search" placeholder="Артикул или название">
-      <select id="cat"><option value="">Все категории</option></select>
+      <label class="field grow">Поиск
+        <input id="q" type="search" placeholder="Артикул или название" autocomplete="off">
+      </label>
+      <label class="field">Категория
+        <select id="cat"><option value="">Все категории</option></select>
+      </label>
     </div>
-    <table class="list">
-      <thead><tr><th>Артикул</th><th>Товар</th><th class="num">Цена, ₽</th><th></th></tr></thead>
+    <div class="table-wrap"><table class="list">
+      <thead><tr><th>Артикул</th><th>Товар</th><th class="num">Цена, ₽</th><th><span class="visually-hidden">Добавить</span></th></tr></thead>
       <tbody id="catalog"></tbody>
-    </table>
-    <div class="pager"><button id="prev">←</button><span id="pageInfo"></span><button id="next">→</button></div>
+    </table></div>
+    <div class="pager"><button id="prev" class="icon" aria-label="Предыдущая страница">‹</button><span id="pageInfo" class="muted"></span><button id="next" class="icon" aria-label="Следующая страница">›</button></div>
 
     <details class="bulk">
       <summary>Вставить список артикулов из запроса клиента</summary>
+      <label class="field" for="bulkText">По одному на строку: артикул и количество</label>
       <textarea id="bulkText" rows="4" placeholder="LIFT-0001 2&#10;COMP-0048&#10;ACC-0092 4"></textarea>
       <button id="bulkAdd">Добавить в КП</button>
-      <div id="bulkResult" class="muted"></div>
+      <div id="bulkResult" class="hint" role="status"></div>
     </details>
   </section>
 
-  <section class="panel">
-    <h2>КП по сделке <span id="kpNo" class="muted"></span></h2>
-    <table class="list kp">
-      <thead><tr><th>Товар</th><th class="num">Кол-во</th><th class="num">Цена</th><th class="num">Скидка, %</th><th class="num">Сумма</th><th></th></tr></thead>
+  <section class="panel kp-panel" aria-labelledby="h-kp">
+    <h2 id="h-kp">КП по сделке <span id="kpNo" class="muted"></span></h2>
+    <div class="table-wrap"><table class="list kp">
+      <thead><tr><th>Товар</th><th class="num">Кол-во</th><th class="num">Цена, ₽</th><th class="num">Скидка, %</th><th class="num">Сумма, ₽</th><th><span class="visually-hidden">Убрать</span></th></tr></thead>
       <tbody id="lines"></tbody>
-    </table>
+    </table></div>
     <div id="totals" class="totals"></div>
     <h3>Проверки</h3>
-    <ul id="checks" class="checks"></ul>
+    <ul id="checks" class="checks" role="status"></ul>
     <div class="row actions">
       <button id="preview" class="primary">Предпросмотр и PDF</button>
       <button id="attach">Сохранить в сделку</button>
       <button id="clear" class="ghost">Очистить</button>
+      <span id="blocked" class="hint"></span>
     </div>
     <pre id="attachLog" class="log" hidden></pre>
   </section>
 </main>
 
-<dialog id="doc">
+<dialog id="doc" aria-label="Предпросмотр КП">
   <div id="docBody" class="kpdoc"></div>
-  <div class="row noprint"><button id="print" class="primary">Печать / сохранить PDF</button><button id="closeDoc">Закрыть</button></div>
+  <div class="row noprint doc-actions"><button id="print" class="primary">Печать или PDF</button><button id="closeDoc">Закрыть</button></div>
 </dialog>
 
 <script type="module" src="app.js"></script>
