@@ -155,6 +155,7 @@ function renderReady() {
     price: `<p class="state price">Подтвердите ${prices === 1 ? 'новую цену' : `новые цены (${prices})`} из PIM</p>`,
   }[reason] ?? (warns ? `<p class="state warn">Можно формировать, но проверьте: ${warns} ${plural(warns, 'замечание', 'замечания', 'замечаний')}</p>`
                       : '<p class="state ok">Ошибок нет, КП можно формировать</p>');
+  // на телефоне кнопки в нижней панели: там же короткая причина, почему они неактивны
   $('readyState').innerHTML = head + (prices > 1 ? '<button class="btn sm" id="acceptAll">Принять все новые цены</button>' : '');
   $('issues').innerHTML = iss.map(x =>
     `<li class="${x.kind}"><button class="link" data-goto="${x.i}" data-field="${x.field ?? ''}"><span class="mono">${esc(x.sku)}</span> ${esc(x.text)}</button></li>`).join('');
@@ -162,6 +163,9 @@ function renderReady() {
   const discountGate = needsDiscountOk() && !reason;
   $('discountOk').hidden = !discountGate;
   $('discountOkBox').checked = state.discountApproved;
+  const blocked = reason && reason !== 'empty', needOk = discountGate && !state.discountApproved;
+  $('barState').hidden = !(blocked || needOk);
+  $('barState').textContent = blocked ? $('readyState').querySelector('p').textContent + ' ›' : needOk ? 'Отметьте согласование скидки ›' : '';
   $('preview').disabled = !!reason;
   $('save').disabled = !!reason || (discountGate && !state.discountApproved);
 }
@@ -174,7 +178,7 @@ function renderVersions() {
         <div class="v-meta">${positions(v.lines.length)} · <span class="mono">${money(v.total)} ₽</span>${v.approved ? ' · скидка согласована' : ''}</div>
         <div class="v-actions">
           <button class="link" data-open-version="${k}">Открыть КП</button>
-          <details><summary class="link">Запрос в Битрикс24</summary><pre class="payload">${esc(JSON.stringify(v.payload, null, 2))}</pre></details>
+          <details><summary class="link">Что уйдёт в Битрикс24</summary><pre class="payload">${esc(JSON.stringify(v.payload, null, 2))}</pre></details>
         </div>
       </li>`).join('')
     : '<li class="muted">Пока ничего не сохранено в сделку.</li>';
@@ -525,13 +529,13 @@ function docHtml(v, draft) {
     <p class="doc-to"><span>Для</span>${esc(d.company)}, ${esc(d.contact)}</p>
     <div class="doc-scroll"><table class="doc-table"><thead><tr><th>№</th><th>Артикул</th><th>Наименование</th><th class="num">Кол-во</th><th class="num">Цена, ₽</th><th class="num">Скидка</th><th class="num">Сумма, ₽</th></tr></thead>
     <tbody>${v.lines.map((l, i) => `<tr><td>${i + 1}</td><td class="mono">${esc(l.sku)}</td><td>${esc(l.name)}</td><td class="num">${esc(l.qty)}</td><td class="num mono">${money(l.price)}</td><td class="num">${l.discount ? esc(num(l.discount)) + '%' : ''}</td><td class="num mono">${money(l.sum)}</td></tr>`).join('')}</tbody></table></div>
-    <dl class="doc-totals">
+    <div class="doc-end"><dl class="doc-totals">
       ${gross !== net ? `<dt>Без скидки</dt><dd class="mono">${money(gross)} ₽</dd><dt>Скидка</dt><dd class="mono">−${money(round2(gross - net))} ₽</dd>` : ''}
       <dt class="grand">Итого</dt><dd class="mono grand">${money(net)} ₽</dd>
       <dt>в т. ч. НДС ${VAT_RATE}%</dt><dd class="mono">${money(vatOf(net))} ₽</dd>
     </dl>
     <p class="doc-terms screen-only">Условия оплаты, поставки и гарантии подставляются из шаблона компании.</p>
-    <p class="doc-sign">Менеджер: ${esc(MANAGER.name)}</p>`;
+    <p class="doc-sign">Менеджер: ${esc(MANAGER.name)}</p></div>`;
 }
 function openDoc(v, draft) {
   $('docBody').innerHTML = docHtml(v, draft);
@@ -573,6 +577,11 @@ for (const dlg of document.querySelectorAll('dialog')) {
 }
 
 let toastTimer = 0;
+// окно открылось или закрылось после уведомления: переносим уведомление
+new MutationObserver(() => placeToast()).observe(document.body, { subtree: true, attributeFilter: ['open'] });
+$('barState').onclick = () => $('h-ready').scrollIntoView({ block: 'start', behavior: 'smooth' });
+// при открытом окне всё вне его неактивно: уведомление живёт внутри верхнего открытого окна, чтобы «Вернуть» нажималось
+const placeToast = () => { const t = $('toast'), host = [...document.querySelectorAll('dialog[open]')].at(-1) ?? document.body; if (t.parentElement !== host) host.append(t); };
 function hideToast() { $('toast').hidden = true; clearTimeout(toastTimer); undo = []; }
 function toast(text, actionLabel, action) {
   if (!actionLabel) undo = [];
@@ -581,7 +590,7 @@ function toast(text, actionLabel, action) {
   btn.hidden = !actionLabel;
   btn.textContent = actionLabel || '';
   btn.onclick = () => { action?.(); hideToast(); };
-  $('toast').hidden = false;
+  placeToast(); $('toast').hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(hideToast, actionLabel ? 6000 : 3500);
 }

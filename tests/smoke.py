@@ -281,7 +281,9 @@ with sync_playwright() as p:
     pg.keyboard.press('Escape')
     try:
         import pymupdf
-        t = ''.join(x.get_text() for x in pymupdf.open(pdf))
+        pages = [x.get_text() for x in pymupdf.open(pdf)]
+        t = ''.join(pages)
+        check('печать: подпись не уходит одна на последнюю страницу', 'Менеджер' in pages[-1] and 'Итого' in pages[-1], pages[-1][:200])
         check(f'печать {n} позиций: шапка, первая и последняя строка, итог, без служебных подсказок',
               n > 20 and 'Коммерческое предложение' in t and 'LIFT-0001' in t and f'\n{n}\n' in t and 'Итого' in t and 'шаблона компании' not in t, t[:300])
     except ImportError:
@@ -324,12 +326,18 @@ with sync_playwright() as p:
     m.wait_for_timeout(300)
     check('телефон: ширина страницы не больше экрана', m.evaluate('document.documentElement.scrollWidth') <= 390,
           str(m.evaluate('document.documentElement.scrollWidth')))
+    m.locator('[data-del]').last.click()
+    vis = lambda sel: m.evaluate(f"(() => {{ const r = document.querySelector('{sel}').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }})()")
+    check('телефон: «Предпросмотр» и «Сохранить» видны без прокрутки к концу', m.evaluate('scrollTo(0, 0) || true') and vis('#preview') and vis('#save'))
+    check('телефон: кнопки не мельче 44px', m.locator('#save').bounding_box()['height'] >= 44 and m.locator('#toastAction').bounding_box()['height'] >= 44)
     m.click('#preview')
     box = m.locator('#doc').bounding_box()
     check('телефон: предпросмотр в пределах экрана', box['x'] >= 0 and box['x'] + box['width'] <= 390, str(box))
     fits = lambda sel: m.evaluate(f"(() => {{ const e = document.querySelector('{sel}'); return e.scrollWidth <= e.clientWidth + 1; }})()")
     check('телефон: лист КП не сдвигается вбок, таблица листается сама', fits('#doc') and not fits('#doc .doc-scroll'))
     y = m.evaluate('scrollY'); m.mouse.wheel(0, 600); m.wait_for_timeout(200)
+    on_top = lambda sel: m.evaluate(f"(() => {{ const r = document.querySelector('{sel}').getBoundingClientRect(); return !!document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('{sel}'); }})()")
+    check('телефон: уведомление над открытым окном', m.evaluate("document.getElementById('toast').hidden") or on_top('#toast'))
     check('телефон: страница под открытым окном не листается', m.evaluate('getComputedStyle(document.documentElement).overflow') == 'hidden' and m.evaluate('scrollY') == y)
     m.keyboard.press('Escape')
     m.click('#openCatalog')
