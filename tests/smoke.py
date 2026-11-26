@@ -49,8 +49,8 @@ with sync_playwright() as p:
 
     # приёмка 4: 459 600 × 2, скидка 5% (LIFT-0001 — первая строка)
     q0.fill('2'); d0.fill('5'); pg.locator('#lines tr').nth(1).locator('button[data-del]').click()
-    sums = pg.inner_text('#totals')
-    check('сумма 873 240,00 и НДС 22% 157 469,51', '873 240,00' in sums.replace(' ', ' ') and '157 469,51' in sums.replace(' ', ' '), sums)
+    sums = pg.inner_text('#totals').replace(chr(0xA0), ' ')
+    check('сумма 873 240,00 и НДС 22% 157 469,51', '873 240,00' in sums and '157 469,51' in sums, sums)
 
     # приёмка 2: товар без цены блокирует КП
     pg.fill('#q', 'TIRE-0027'); pg.click('#catalog button[data-add]')
