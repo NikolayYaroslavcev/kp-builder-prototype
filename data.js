@@ -1,5 +1,4 @@
-// Условные данные: товары и цены выдуманы, структура PIM и Битрикс24: допущение.
-// В рабочей версии сюда придут ответы API PIM и Битрикс24.
+// Условные данные: товары, цены и сделки выдуманы.
 
 const CATEGORIES = [
   { id: 'lift', name: 'Подъёмники', items: ['Подъёмник двухстоечный 4 т', 'Подъёмник двухстоечный 5 т', 'Подъёмник ножничный 3,5 т', 'Подъёмник четырёхстоечный 4 т', 'Подъёмник подкатной 2,5 т'], base: 310000 },
@@ -12,7 +11,7 @@ const CATEGORIES = [
 ];
 const BRANDS = ['Техмаш', 'АвтоЛифт', 'Сервис-Про', 'Гаражник', 'NordTool'];
 
-function rnd(seed) { // детерминированный генератор, чтобы данные не менялись между загрузками
+function rnd(seed) { // детерминированный, чтобы каталог не менялся между загрузками
   let s = seed;
   return () => (s = (s * 16807) % 2147483647) / 2147483647;
 }
@@ -30,8 +29,8 @@ export const PRODUCTS = (() => {
         const daysAgo = Math.floor(r() * 115);
         list.push({
           sku, name: `${name} ${brand}`, brand, category: c.id,
-          price: roll < 0.04 ? null : price,               // нет цены в PIM
-          status: roll > 0.95 ? 'archived' : 'active',     // снят с продажи
+          price: roll < 0.04 ? null : price,
+          status: roll > 0.95 ? 'archived' : 'active',
           priceUpdatedAt: new Date(Date.now() - daysAgo * 864e5).toISOString().slice(0, 10),
         });
       }
@@ -51,6 +50,7 @@ export const DEALS = [
   { id: 1058, title: 'СТО под ключ', company: 'ООО «Дорожник»', contact: 'Елена Гусева', email: 'guseva@example.ru' },
 ];
 
-export const MANAGER = { name: 'Менеджер (демо)', maxDiscount: 10 }; // лимит скидки: допущение
-export const PRICE_MAX_AGE_DAYS = 90; // цена старше: предупреждение (допущение)
-export const VAT_RATE = 22; // ставка НДС, цены в PIM считаем с НДС (допущение, уточнить)
+// допущения, уточнить у руководителя
+export const MANAGER = { name: 'Дарья Лосева', maxDiscount: 10 };
+export const PRICE_MAX_AGE_DAYS = 90;
+export const VAT_RATE = 22;

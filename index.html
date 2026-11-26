@@ -4,66 +4,137 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Сборка КП (прототип)</title>
+<link rel="preload" href="fonts/GolosText-400-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="top">
-  <div class="brand">Сборка КП<span class="tag">прототип, товары и цены условные</span></div>
-  <label class="field">Сделка в Битрикс24
+<header class="appbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">КП</span>
+    <div><b>Сборка коммерческого предложения</b><small>Прототип. Товары, цены и сделки условные</small></div>
+  </div>
+  <label class="deal-pick">
+    <span>Сделка в Битрикс24</span>
     <select id="deal"></select>
   </label>
-  <div id="dealInfo" class="deal-info muted"></div>
+  <div id="dealCard" class="deal-card"></div>
+  <div id="saveState" class="save-state" role="status"></div>
 </header>
 
-<main class="grid">
-  <section class="panel" aria-labelledby="h-catalog">
-    <h2 id="h-catalog">Каталог PIM</h2>
-    <div class="row">
-      <label class="field grow">Поиск
-        <input id="q" type="search" placeholder="Артикул или название" autocomplete="off">
-      </label>
-      <label class="field">Категория
-        <select id="cat"><option value="">Все категории</option></select>
-      </label>
+<main class="layout">
+  <section class="sheet" aria-labelledby="kpTitle">
+    <div class="sheet-head">
+      <h1 id="kpTitle">Черновик <span id="kpNo" class="kp-no"></span></h1>
+      <span id="lineCount" class="muted"></span>
     </div>
-    <div class="table-wrap"><table class="list">
-      <thead><tr><th>Артикул</th><th>Товар</th><th class="num">Цена, ₽</th><th><span class="visually-hidden">Добавить</span></th></tr></thead>
-      <tbody id="catalog"></tbody>
-    </table></div>
-    <div class="pager"><button id="prev" class="icon" aria-label="Предыдущая страница">‹</button><span id="pageInfo" class="muted"></span><button id="next" class="icon" aria-label="Следующая страница">›</button></div>
 
-    <details class="bulk">
-      <summary>Вставить список артикулов из запроса клиента</summary>
-      <label class="field" for="bulkText">По одному на строку: артикул и количество</label>
-      <textarea id="bulkText" rows="4" placeholder="LIFT-0001 2&#10;COMP-0048&#10;ACC-0092 4"></textarea>
-      <button id="bulkAdd">Добавить в КП</button>
-      <div id="bulkResult" class="hint" role="status"></div>
+    <div id="pimBanner" class="banner err" role="alert" hidden>
+      <span>Каталог PIM не отвечает. Позиции и черновик на месте, но цены не сверены, поэтому КП пока не сформировать.</span>
+      <button id="retryPim" class="btn sm">Повторить</button>
+    </div>
+
+    <div class="adder">
+      <div class="combo">
+        <label for="add" class="visually-hidden">Добавить товар</label>
+        <input id="add" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Добавить товар: артикул или название"
+               role="combobox" aria-autocomplete="list" aria-controls="suggest" aria-expanded="false">
+        <kbd class="kbd" aria-hidden="true">/</kbd>
+        <ul id="suggest" class="suggest" role="listbox" hidden></ul>
+      </div>
+      <button id="openCatalog" class="btn">Каталог</button>
+      <button id="openBulk" class="btn">Вставить список</button>
+    </div>
+
+    <div class="table-wrap" id="tableWrap">
+      <table class="lines">
+        <colgroup><col class="c-n"><col><col class="c-qty"><col class="c-price"><col class="c-disc"><col class="c-sum"><col class="c-x"></colgroup>
+        <thead><tr>
+          <th class="num">№</th><th>Товар</th><th class="num">Кол-во</th><th class="num">Цена, ₽</th>
+          <th class="num">Скидка, %</th><th class="num">Сумма, ₽</th><th><span class="visually-hidden">Убрать</span></th>
+        </tr></thead>
+        <tbody id="lines"></tbody>
+      </table>
+    </div>
+
+    <div id="empty" class="empty-state">
+      <p class="empty-title">В КП пока нет товаров</p>
+      <p>Начните вводить артикул или название в строке выше, откройте каталог или вставьте список из письма клиента.</p>
+    </div>
+
+    <div id="totals" class="totals" hidden></div>
+  </section>
+
+  <aside class="side">
+    <section class="card" aria-labelledby="h-ready">
+      <h2 id="h-ready">Готовность КП</h2>
+      <div id="readyState" class="ready-state"></div>
+      <ul id="issues" class="issues"></ul>
+      <label id="discountOk" class="switch approve" hidden><input type="checkbox" id="discountOkBox"> Скидка выше лимита согласована с руководителем</label>
+      <div class="actions">
+        <button id="preview" class="btn primary">Предпросмотр</button>
+        <button id="save" class="btn">Сохранить в сделку</button>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="h-versions">
+      <h2 id="h-versions">Сохранённые версии</h2>
+      <ol id="versions" class="versions"></ol>
+    </section>
+
+    <details class="card demo">
+      <summary>Демо-режим и допущения</summary>
+      <label class="switch"><input type="checkbox" id="demoOffline"> PIM не отвечает</label>
+      <button id="demoPrices" class="btn sm">Поменять цены в PIM у позиций КП</button>
+      <ul class="assumptions">
+        <li>Цены в PIM с НДС, ставка <span id="vatRate"></span>%.</li>
+        <li>Лимит скидки менеджера <span id="discLimit"></span>%, выше нужно согласование.</li>
+        <li>Цена старше <span id="priceAge"></span> дней требует проверки.</li>
+        <li>КП действует <span id="validDays"></span> дней с даты сохранения.</li>
+        <li>Запрос в Битрикс24 в демо не отправляется.</li>
+      </ul>
+      <button id="demoReset" class="btn sm ghost">Сбросить демо</button>
     </details>
-  </section>
-
-  <section class="panel kp-panel" aria-labelledby="h-kp">
-    <h2 id="h-kp">КП по сделке <span id="kpNo" class="muted"></span></h2>
-    <div class="table-wrap"><table class="list kp">
-      <thead><tr><th>Товар</th><th class="num">Кол-во</th><th class="num">Цена, ₽</th><th class="num">Скидка, %</th><th class="num">Сумма, ₽</th><th><span class="visually-hidden">Убрать</span></th></tr></thead>
-      <tbody id="lines"></tbody>
-    </table></div>
-    <div id="totals" class="totals"></div>
-    <h3>Проверки</h3>
-    <ul id="checks" class="checks" role="status"></ul>
-    <div class="row actions">
-      <button id="preview" class="primary">Предпросмотр и PDF</button>
-      <button id="attach">Сохранить в сделку</button>
-      <button id="clear" class="ghost">Очистить</button>
-      <span id="blocked" class="hint"></span>
-    </div>
-    <pre id="attachLog" class="log" hidden></pre>
-  </section>
+  </aside>
 </main>
 
-<dialog id="doc" aria-label="Предпросмотр КП">
-  <div id="docBody" class="kpdoc"></div>
-  <div class="row noprint doc-actions"><button id="print" class="primary">Печать или PDF</button><button id="closeDoc">Закрыть</button></div>
+<dialog id="catalog" class="drawer" aria-labelledby="h-catalog">
+  <div class="drawer-head">
+    <h2 id="h-catalog">Каталог PIM</h2>
+    <button class="btn icon ghost" data-close aria-label="Закрыть каталог">×</button>
+  </div>
+  <div class="filters">
+    <label class="field grow">Поиск<input id="cq" type="search" autocomplete="off" placeholder="Артикул или название"></label>
+    <label class="field">Категория<select id="ccat"><option value="">Все категории</option></select></label>
+  </div>
+  <div id="cbody" class="drawer-body"></div>
+  <div class="pager"><button id="cprev" class="btn icon" aria-label="Предыдущая страница">‹</button><span id="cinfo" class="muted"></span><button id="cnext" class="btn icon" aria-label="Следующая страница">›</button></div>
 </dialog>
+
+<dialog id="bulk" class="modal" aria-labelledby="h-bulk">
+  <div class="drawer-head">
+    <h2 id="h-bulk">Вставить список из запроса клиента</h2>
+    <button class="btn icon ghost" data-close aria-label="Закрыть">×</button>
+  </div>
+  <div class="dlg-body">
+  <label class="field" for="bulkText">Каждая позиция с новой строки: артикул, затем количество через пробел, табуляцию или точку с запятой. Без количества считается 1.</label>
+  <textarea id="bulkText" rows="6" spellcheck="false" placeholder="LIFT-0001 2&#10;COMP-0048&#10;ACC-0092;4"></textarea>
+  <div class="row"><button id="bulkParse" class="btn">Проверить список</button><span id="bulkStatus" class="muted" role="status"></span></div>
+  <div id="bulkPreview"></div>
+  <div class="row end"><button id="bulkAdd" class="btn primary" disabled>Добавить</button></div>
+  </div>
+</dialog>
+
+<dialog id="doc" class="modal paper" aria-label="Предпросмотр КП">
+  <button class="btn icon ghost dlg-x noprint" data-close aria-label="Закрыть предпросмотр">×</button>
+  <div id="docBody"></div>
+  <div class="row noprint doc-actions"><button id="print" class="btn primary">Печать или PDF</button><button class="btn" data-close>Закрыть</button></div>
+</dialog>
+
+<div id="printArea" class="paper print-only" aria-hidden="true"></div>
+
+<div id="toast" class="toast" role="status" hidden><span id="toastText"></span><button id="toastAction" class="btn sm" hidden></button></div>
 
 <script type="module" src="app.js"></script>
 </body>
