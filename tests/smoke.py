@@ -116,8 +116,9 @@ with sync_playwright() as p:
     d0.fill('5')
     q0.fill('0.5')
     check('количество 0,5: ошибка, не в итоге', 'целое число' in pg.inner_text('#lines') and pg.is_disabled('#preview') and 'Не учтено' in pg.inner_text('#totals'))
-    red = lambda loc: loc.get_attribute('aria-invalid') == 'true' and loc.evaluate("e => getComputedStyle(e).borderTopColor === getComputedStyle(document.querySelector('.issue.err')).color")
-    check('количество 0,5: поле красное, в фокусе тоже', red(q0) and q0.evaluate('e => e === document.activeElement'))
+    red = lambda loc: pg.wait_for_timeout(250) or loc.get_attribute('aria-invalid') == 'true' and loc.evaluate("e => getComputedStyle(e).borderTopColor === getComputedStyle(document.querySelector('.issue.err')).color")
+    focused = q0.evaluate('e => e === document.activeElement')
+    check('количество 0,5: поле красное, в фокусе тоже', focused and red(q0))
     for bad in ('1e3', '0x10', '100000', '-1', 'абв'):
         q0.fill(bad)
         check(f'количество «{bad}»: ошибка, поле красное', 'целое число' in pg.inner_text('#lines') and red(q0) and pg.is_disabled('#preview'))
@@ -126,7 +127,7 @@ with sync_playwright() as p:
     d0.fill('15')
     check('скидка выше лимита: у поля рамка замечания', 'warn' in (d0.get_attribute('class') or '') and d0.get_attribute('aria-invalid') == 'false')
     d0.fill('1e1')
-    check('скидка «1e1»: ошибка, поле красное', 'от 0 до 99' in pg.inner_text('#lines') and red(d0))
+    check('скидка «1e1»: ошибка, поле красное', 'от 0 до 99' in pg.inner_text('#lines') and red(d0), pg.inner_text('#lines')[:300] + str(d0.get_attribute('aria-invalid')))
     d0.fill('5')
 
     # приёмка 2: товар без цены блокирует, есть «Найти замену»
@@ -159,8 +160,11 @@ with sync_playwright() as p:
 
     # перепечатывание количества: пустое поле не превращает строку в ошибку
     q = pg.locator('input[data-qty]').first
+    before = q.input_value()
     q.fill('')
-    check('пустое поле количества во время ввода не даёт ошибку', 'целое число' not in pg.inner_text('#lines'))
+    check('пустое количество: «Укажите количество», КП недоступно', 'Укажите количество' in pg.inner_text('#lines') and pg.is_disabled('#preview'))
+    pg.click('#add'); pg.wait_for_timeout(100)
+    check('ушли из пустого поля: вернулось прежнее количество', q.input_value() == before and 'Укажите' not in pg.inner_text('#lines'), q.input_value() + ' vs ' + before)
     q.fill('2')
 
     # вставка списка: единицы, «x», точка с запятой, неверные количества не добавляются
@@ -334,7 +338,8 @@ with sync_playwright() as p:
     box = m.locator('#doc').bounding_box()
     check('телефон: предпросмотр в пределах экрана', box['x'] >= 0 and box['x'] + box['width'] <= 390, str(box))
     fits = lambda sel: m.evaluate(f"(() => {{ const e = document.querySelector('{sel}'); return e.scrollWidth <= e.clientWidth + 1; }})()")
-    check('телефон: лист КП не сдвигается вбок, таблица листается сама', fits('#doc') and not fits('#doc .doc-scroll'))
+    check('телефон: лист КП без сдвига вбок, строки карточками, сумма видна', fits('#doc') and fits('#doc .doc-scroll') and m.locator('#doc .doc-table td:nth-child(7)').first.is_visible())
+    check('телефон: крестик и «Печать» видны в середине длинного КП', m.evaluate("document.getElementById('doc').scrollTop = 600") is not None and vis('#doc .dlg-x') and vis('#print'))
     y = m.evaluate('scrollY'); m.mouse.wheel(0, 600); m.wait_for_timeout(200)
     on_top = lambda sel: m.evaluate(f"(() => {{ const r = document.querySelector('{sel}').getBoundingClientRect(); return !!document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('{sel}'); }})()")
     check('телефон: уведомление над открытым окном', m.evaluate("document.getElementById('toast').hidden") or on_top('#toast'))

@@ -31,7 +31,9 @@ export const pim = {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     const found = [...db.values()].filter(p =>
       (!cat || p.category === cat) &&
-      words.every(w => p.sku.toLowerCase().includes(w) || p.name.toLowerCase().includes(w)));
+      // число ищем целым словом в названии («4 т» не находит LIFT-0004), остальное — подстрокой
+      words.every(w => /^\d+([.,]\d+)?$/.test(w) ? p.name.toLowerCase().split(/[^\p{L}\d.,]+/u).includes(w) || p.sku.toLowerCase().endsWith('-' + w.padStart(4, '0'))
+        : p.sku.toLowerCase().includes(w) || p.name.toLowerCase().includes(w)));
     return { total: found.length, items: found.slice(page * size, page * size + size).map(p => ({ ...p })) };
   }),
   getMany: skus => call(() => Object.fromEntries(skus.map(s => [s, db.has(s) ? { ...db.get(s) } : null]))),

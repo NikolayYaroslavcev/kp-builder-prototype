@@ -35,7 +35,7 @@ const store = {
       const d = JSON.parse(localStorage.getItem(this.key(id)));
       if (!d || !Array.isArray(d.lines)) return null;
       d.lines = d.lines.filter(l => l && typeof l.sku === 'string' && typeof l.name === 'string')
-        .map(l => ({ ...l, qty: Number(l.qty), discount: Number(l.discount) || 0, pending: null }));
+        .map(l => ({ ...l, qty: l.qty === null ? null : Number(l.qty), discount: l.discount === null ? null : Number(l.discount) || 0, pending: null }));
       d.versions = Array.isArray(d.versions) ? d.versions : [];
       return d;
     } catch { return null; }
@@ -59,11 +59,13 @@ function lineIssues(l) {
   if (l.status === 'missing') out.push({ kind: 'err', text: 'Артикула больше нет в PIM', action: 'replace' });
   if (l.status === 'archived') out.push({ kind: 'err', text: 'Снят с продажи', action: 'replace' });
   if (l.price == null && l.status !== 'missing') out.push({ kind: 'err', text: 'Нет цены в PIM: уточните цену у руководителя или замените товар', action: 'replace' });
-  if (l.pending) out.push({ kind: 'price', text: `Цена в PIM обновилась: было ${money(l.price)}, стало ${money(l.pending.price)}`, action: 'accept' });
-  if (!qtyOk(l.qty)) out.push({ kind: 'err', text: 'Количество: целое число от 1 до 99 999', field: 'qty' });
-  if (!Number.isFinite(l.discount) || l.discount < 0 || l.discount > 99) out.push({ kind: 'err', text: 'Скидка: от 0 до 99%', field: 'disc' });
+  if (l.pending) out.push({ kind: 'price', text: `Цена в PIM обновилась: было ${money(l.price)}, стало ${money(l.pending.price)}`, action: 'accept' });
+  if (l.qty === null) out.push({ kind: 'err', text: 'Укажите количество', field: 'qty' });
+  else if (!qtyOk(l.qty)) out.push({ kind: 'err', text: 'Количество: целое число от 1 до 99 999', field: 'qty' });
+  if (l.discount === null) out.push({ kind: 'err', text: 'Укажите скидку: 0, если без скидки', field: 'disc' });
+  else if (!Number.isFinite(l.discount) || l.discount < 0 || l.discount > 99) out.push({ kind: 'err', text: 'Скидка: от 0 до 99%', field: 'disc' });
   else if (l.discount > MANAGER.maxDiscount) out.push({ kind: 'warn', text: `Скидка выше лимита ${MANAGER.maxDiscount}%, нужно согласование`, field: 'disc', discount: true });
-  if (l.price != null && !l.pending && daysSince(l.priceUpdatedAt) > PRICE_MAX_AGE_DAYS) out.push({ kind: 'warn', text: `Цена не обновлялась ${daysSince(l.priceUpdatedAt)} дн., проверьте актуальность` });
+  if (l.price != null && !l.pending && daysSince(l.priceUpdatedAt) > PRICE_MAX_AGE_DAYS) out.push({ kind: 'warn', stale: true, text: `Цена не обновлялась ${daysSince(l.priceUpdatedAt)} дн., проверьте актуальность` });
   return out;
 }
 const hasErr = l => lineIssues(l).some(x => x.kind === 'err');
@@ -97,7 +99,7 @@ function renderLines() {
         <div class="row-issues" id="iss-${i}" data-issues="${i}"></div>
       </td>
       <td class="num"><input class="n" type="text" inputmode="numeric" autocomplete="off" value="${esc(showNum(l.qty))}" data-qty="${i}" aria-describedby="iss-${i}" aria-label="Количество, ${esc(l.sku)}"></td>
-      <td class="num mono">${price(l.price)}</td>
+      <td class="num mono">${l.pending ? `<s class="muted">${money(l.price)}</s><br>${money(l.pending.price)}` : price(l.price)}</td>
       <td class="num"><input class="n" type="text" inputmode="decimal" autocomplete="off" value="${esc(showNum(l.discount))}" data-disc="${i}" aria-describedby="iss-${i}" aria-label="Скидка в процентах, ${esc(l.sku)}"></td>
       <td class="num mono strong" data-sum="${i}"></td>
       <td><button class="btn icon ghost" data-del="${i}" aria-label="Убрать ${esc(l.sku)} из КП">×</button></td>
@@ -133,8 +135,8 @@ function renderSummary() {
   $('totals').innerHTML = `
     <dl>
       ${t.discount ? `<dt>Без скидки</dt><dd class="mono">${money(t.gross)} ₽</dd><dt>Скидка</dt><dd class="mono">−${money(t.discount)} ₽</dd>` : ''}
-      <dt class="grand">Итого</dt><dd class="mono grand">${money(t.net)} ₽</dd>
-      <dt>в т. ч. НДС ${VAT_RATE}%</dt><dd class="mono">${money(t.vat)} ₽</dd>
+      <dt class="grand">Итого</dt><dd class="mono grand">${t.excluded === n ? '—' : money(t.net) + ' ₽'}</dd>
+      <dt>в т. ч. НДС ${VAT_RATE}%</dt><dd class="mono">${t.excluded === n ? '—' : money(t.vat) + ' ₽'}</dd>
     </dl>
     ${t.excluded ? `<p class="totals-note">Не учтено в итоге, пока не исправлено: ${positions(t.excluded)}</p>` : ''}`;
 
@@ -157,7 +159,10 @@ function renderReady() {
                       : '<p class="state ok">Ошибок нет, КП можно формировать</p>');
   // на телефоне кнопки в нижней панели: там же короткая причина, почему они неактивны
   $('readyState').innerHTML = head + (prices > 1 ? '<button class="btn sm" id="acceptAll">Принять все новые цены</button>' : '');
-  $('issues').innerHTML = iss.map(x =>
+  const rank = { err: 0, price: 1, warn: 2 }, stale = iss.filter(x => x.stale);
+  const shown = [...iss].filter(x => !x.stale || stale.length < 3).sort((a, b) => rank[a.kind] - rank[b.kind]);
+  if (stale.length >= 3) shown.push({ kind: 'warn', i: stale[0].i, sku: '', text: `Цены не обновлялись больше ${PRICE_MAX_AGE_DAYS} дн.: ${positions(stale.length)}` });
+  $('issues').innerHTML = shown.map(x =>
     `<li class="${x.kind}"><button class="link" data-goto="${x.i}" data-field="${x.field ?? ''}"><span class="mono">${esc(x.sku)}</span> ${esc(x.text)}</button></li>`).join('');
 
   const discountGate = needsDiscountOk() && !reason;
@@ -190,10 +195,10 @@ function renderDealCard() {
 }
 
 let refreshReq = 0;
-async function refreshFromPim() {
+async function refreshFromPim(manual = false) {
   const req = ++refreshReq, dealId = state.dealId;
   const skus = [...new Set(state.lines.map(l => l.sku))];
-  if (!skus.length) { state.pimOk = true; renderSummary(); return; }
+  if (!skus.length) { state.pimOk = !demo.offline; if (manual && demo.offline) toast('Каталог PIM всё ещё не отвечает'); renderSummary(); return; }
   try {
     const fresh = await pim.getMany(skus);
     if (req !== refreshReq || dealId !== state.dealId) return;
@@ -209,6 +214,7 @@ async function refreshFromPim() {
   } catch {
     if (req !== refreshReq || dealId !== state.dealId) return;
     state.pimOk = false;
+    if (manual) toast('Каталог PIM всё ещё не отвечает');
   }
   renderLines();
 }
@@ -271,7 +277,7 @@ async function runSuggest() {
     const { items } = await pim.search({ q, size: 8 });
     if (req !== sug.req) return;
     const skip = sug.replace != null ? state.lines[sug.replace]?.sku : null;
-    sug.items = items.filter(p => p.sku !== skip); sug.error = false;
+    sug.items = items.filter(p => p.sku !== skip && (skip == null || (p.status !== 'archived' && p.price != null))); sug.error = false;
     const exact = sug.items.findIndex(p => p.sku === q.toUpperCase());
     sug.active = exact >= 0 ? exact : sug.items.length ? 0 : -1;
     const queued = sug.enterQueued;
@@ -345,17 +351,19 @@ document.addEventListener('keydown', e => {
 $('lines').addEventListener('input', e => {
   const t = e.target;
   if (t.dataset.qty == null && t.dataset.disc == null) return;
-  if (t.value.trim() === '') return;
-  const v = parseNum(t.value);
-  if (t.dataset.qty != null) state.lines[+t.dataset.qty].qty = v;
-  else { state.lines[+t.dataset.disc].discount = v; state.discountApproved = false; }
+  const v = t.value.trim() === '' ? null : parseNum(t.value), l = state.lines[+(t.dataset.qty ?? t.dataset.disc)];
+  if (t.dataset.qty != null) { if (qtyOk(l.qty)) l.lastQty = l.qty; l.qty = v; }
+  else { if (Number.isFinite(l.discount)) l.lastDisc = l.discount; l.discount = v; state.discountApproved = false; }
   renderSummary();
 });
 $('lines').addEventListener('change', e => {
   const t = e.target;
   if (t.value.trim() !== '') return;
   const l = state.lines[+(t.dataset.qty ?? t.dataset.disc)];
-  if (l) t.value = showNum(t.dataset.qty != null ? l.qty : l.discount);
+  if (!l) return;
+  // ушли из пустого поля: возвращаем последнее верное значение
+  if (t.dataset.qty != null) { l.qty = l.lastQty ?? 1; t.value = showNum(l.qty); } else { l.discount = l.lastDisc ?? 0; t.value = showNum(l.discount); }
+  renderSummary();
 });
 
 let undo = [];
@@ -494,7 +502,8 @@ $('bulkParse').onclick = async () => {
     $('bulkPreview').innerHTML = `<table class="clist bulk-list"><thead><tr><th>Строка</th><th>Товар</th><th class="num">Кол-во</th><th></th></tr></thead><tbody>${bulkRows.map(r => `
       <tr><td class="mono raw">${esc(r.raw)}</td><td>${r.p ? esc(r.p.name) : '<span class="muted">не найден</span>'}</td>
       <td class="num mono">${r.status === 'badqty' || !Number.isFinite(r.qty) ? '?' : esc(num(r.qty))}</td><td>${bulkLabel(r)}</td></tr>`).join('')}</tbody></table>`;
-    $('bulkStatus').textContent = `Распознано ${ok.length} из ${bulkRows.length}.` + (ok.length < bulkRows.length ? ' Остальные строки не добавятся.' : '');
+    const bad = ok.filter(r => r.p.status === 'archived' || r.p.price == null).length;
+    $('bulkStatus').textContent = `Распознано ${ok.length} из ${bulkRows.length}.` + (bad ? ` Из них ${bad} добавятся с ошибкой: нет цены или сняты с продажи.` : '') + (ok.length < bulkRows.length ? ' Остальные строки не добавятся.' : '');
     $('bulkAdd').disabled = !ok.length;
     $('bulkAdd').textContent = ok.length ? `Добавить ${ok.length} ${plural(ok.length, 'позицию', 'позиции', 'позиций')}` : 'Добавить';
   } catch {
@@ -528,15 +537,16 @@ function docHtml(v, draft) {
       <div class="doc-meta"><h1>Коммерческое предложение</h1><p>${draft ? 'Черновик' : `№ ${esc(v.no)}`} от ${date(v.at)}<br>Действительно до ${date(validTill)}</p></div></div>
     <p class="doc-to"><span>Для</span>${esc(d.company)}, ${esc(d.contact)}</p>
     <div class="doc-scroll"><table class="doc-table"><thead><tr><th>№</th><th>Артикул</th><th>Наименование</th><th class="num">Кол-во</th><th class="num">Цена, ₽</th><th class="num">Скидка</th><th class="num">Сумма, ₽</th></tr></thead>
-    <tbody>${v.lines.map((l, i) => `<tr><td>${i + 1}</td><td class="mono">${esc(l.sku)}</td><td>${esc(l.name)}</td><td class="num">${esc(l.qty)}</td><td class="num mono">${money(l.price)}</td><td class="num">${l.discount ? esc(num(l.discount)) + '%' : ''}</td><td class="num mono">${money(l.sum)}</td></tr>`).join('')}</tbody></table></div>
-    <div class="doc-end"><dl class="doc-totals">
+    ${tbodies(v.lines.map((l, i) => `<tr><td>${i + 1}</td><td class="mono">${esc(l.sku)}</td><td>${esc(l.name)}</td><td class="num">${esc(l.qty)}</td><td class="num mono">${money(l.price)}</td><td class="num">${l.discount ? esc(num(l.discount)) + '%' : ''}</td><td class="num mono">${money(l.sum)}</td></tr>`), `<div class="doc-end"><dl class="doc-totals">
       ${gross !== net ? `<dt>Без скидки</dt><dd class="mono">${money(gross)} ₽</dd><dt>Скидка</dt><dd class="mono">−${money(round2(gross - net))} ₽</dd>` : ''}
       <dt class="grand">Итого</dt><dd class="mono grand">${money(net)} ₽</dd>
       <dt>в т. ч. НДС ${VAT_RATE}%</dt><dd class="mono">${money(vatOf(net))} ₽</dd>
     </dl>
     <p class="doc-terms screen-only">Условия оплаты, поставки и гарантии подставляются из шаблона компании.</p>
-    <p class="doc-sign">Менеджер: ${esc(MANAGER.name)}</p></div>`;
+    <p class="doc-sign">Менеджер: ${esc(MANAGER.name)}</p></div>`)}</table></div>`;
 }
+// последние две строки, итог и подпись — один неразрывный блок: при печати итог не уходит один на новую страницу
+const tbodies = (rows, end) => `<tbody>${rows.slice(0, -2).join('')}</tbody><tbody class="doc-tail">${rows.slice(-2).join('')}<tr class="doc-end-row"><td colspan="7">${end}</td></tr></tbody>`;
 function openDoc(v, draft) {
   $('docBody').innerHTML = docHtml(v, draft);
   $('print').textContent = draft ? 'Печать черновика' : 'Печать или PDF';
@@ -600,7 +610,7 @@ $('discLimit').textContent = MANAGER.maxDiscount;
 $('priceAge').textContent = PRICE_MAX_AGE_DAYS;
 $('validDays').textContent = VALID_DAYS;
 $('demoOffline').onchange = e => { demo.offline = e.target.checked; refreshFromPim(); };
-$('retryPim').onclick = () => refreshFromPim();
+$('retryPim').onclick = () => refreshFromPim(true);
 $('demoPrices').onclick = () => {
   if (!state.lines.length) { toast('Сначала добавьте товары в КП'); return; }
   bumpPrices(state.lines.slice(0, 2).map(l => l.sku));
