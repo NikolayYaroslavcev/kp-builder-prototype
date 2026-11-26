@@ -27,7 +27,7 @@ export const PRODUCTS = (() => {
         const sku = `${c.id.toUpperCase()}-${String(n++).padStart(4, '0')}`;
         const price = Math.round((c.base * (0.6 + r() * 1.2)) / 100) * 100;
         const roll = r();
-        const daysAgo = Math.floor(r() * 200);
+        const daysAgo = Math.floor(r() * 115);
         list.push({
           sku, name: `${name} ${brand}`, brand, category: c.id,
           price: roll < 0.04 ? null : price,               // нет цены в PIM
@@ -53,3 +53,4 @@ export const DEALS = [
 
 export const MANAGER = { name: 'Менеджер (демо)', maxDiscount: 10 }; // лимит скидки — допущение
 export const PRICE_MAX_AGE_DAYS = 90; // цена старше — предупреждение (допущение)
+export const VAT_RATE = 22; // ставка НДС, цены в PIM считаем с НДС (допущение, уточнить)
